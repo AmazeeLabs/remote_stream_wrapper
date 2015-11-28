@@ -7,3 +7,5 @@ files[] = remote_stream_wrapper.test
 suggests[] = file
 suggests[] = media
 suggests[] = image
+
+dependencies[] = file_entity

@@ -251,12 +251,92 @@ function remote_stream_wrapper_file_add_form($form, &$form_state, array $options
   // @todo Validate against file field allowed types.
   $form['#validators'] = array();
 
+  if (isset($form_state['previous_url']) && $form_state['previous_url'] == $form_state['values']['url']) {
+    $form['mime'] = array(
+      '#type' => 'textfield',
+      '#title' => t('Mime'),
+      '#required' => TRUE,
+      '#default_value' => $form_state['values']['mime'],
+    );
+    include_once DRUPAL_ROOT . '/includes/file.mimetypes.inc';
+    $mimetypes = file_mimetype_mapping();
+    $form['mimetype_mapping'] = array(
+      '#type' => 'fieldset',
+      '#title' => t('Mimetype List'),
+      '#collapsible' => TRUE,
+      '#collapsed' => TRUE,
+    );
+    $form['mimetype_mapping']['mapping'] = array(
+      '#theme' => 'item_list',
+      '#items' => $mimetypes['mimetypes'],
+    );
+    $form['type'] = array(
+      '#type' => 'select',
+      '#title' => t('Type'),
+      '#required' => TRUE,
+      '#options' => file_entity_type_get_names(),
+      '#default_value' => $form_state['values']['type'],
+    );
+  }
+
   $form['actions'] = array('#type' => 'actions');
   $form['actions']['submit'] = array(
     '#type' => 'submit',
     '#value' => t('Submit'),
   );
   return $form;
+}
+
+/**
+ * Validate handler for the "add remote file" form.
+ */
+function remote_stream_wrapper_file_add_form_validate(&$form, &$form_state) {
+  if (form_get_errors()) {
+    return;
+  }
+  try {
+    $file = remote_stream_wrapper_file_load_by_uri($form_state['values']['url']);
+    if ($file) {
+      $edit_path = 'file/' . $file->fid . '/edit';
+      form_error($form['url'], t('A file with given URL is already exist. You can edit it at !link', array('!link' => l($edit_path, $edit_path))));
+    }
+    else {
+      include_once DRUPAL_ROOT . '/includes/file.mimetypes.inc';
+      $mimetypes = file_mimetype_mapping();
+      $first_url_validation = empty($form_state['previous_url']) || $form_state['previous_url'] != $form_state['values']['url'];
+      if ($first_url_validation) {
+        $form_state['previous_url'] = $form_state['values']['url'];
+        $form_state['rebuild'] = TRUE;
+        // Try to detect file type automatically.
+        $file = remote_stream_wrapper_file_create_by_uri($form_state['values']['url']);
+        $form_state['values']['mime'] = $file->filemime;
+        if (in_array($form_state['values']['mime'], $mimetypes['mimetypes'])) {
+          drupal_set_message(t('Please ensure that file mime is correct.'));
+        }
+        else {
+          drupal_set_message(t('Auto-detected file mime is not correct. Please change it.'), 'warning');
+        }
+        if ($file_type = file_get_type($file)) {
+          $form_state['values']['type'] = $file_type;
+          drupal_set_message(t('Please ensure that file type is correct.'));
+        }
+        else {
+          $form_state['values']['type'] = NULL;
+          drupal_set_message(t('Drupal was not able to detect the file type. Please select type from the list.'), 'warning');
+        }
+      }
+    }
+  } catch (Exception $e) {
+    form_error($form['url'], $e->getMessage());
+    return;
+  }
+  if (isset($form_state['values']['mime']) && empty($form_state['rebuild']) && !form_get_errors()) {
+    include_once DRUPAL_ROOT . '/includes/file.mimetypes.inc';
+    $mimetypes = file_mimetype_mapping();
+    if (!in_array($form_state['values']['mime'], $mimetypes['mimetypes'])) {
+      form_error($form['mime'], t('File mime is not correct.'));
+    }
+  }
 }
 
 /**
@@ -270,11 +350,13 @@ function remote_stream_wrapper_file_add_form_submit($form, &$form_state) {
   $uri = $url = $form_state['values']['url'];
 
   try {
-    $file = remote_stream_wrapper_file_load_by_uri($uri);
-    if (!$file) {
-      $file = remote_stream_wrapper_file_create_by_uri($uri);
-      file_save($file);
-    }
+    $file = remote_stream_wrapper_file_create_by_uri($uri);
+
+    // Use form values for type and mime.
+    $file->type = $form_state['values']['type'];
+    $file->filemime = $form_state['values']['mime'];
+
+    file_save($file);
   }
   catch (Exception $e) {
     form_set_error('url', $e->getMessage());
