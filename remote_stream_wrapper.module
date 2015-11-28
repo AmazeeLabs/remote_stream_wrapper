@@ -295,6 +295,11 @@ function remote_stream_wrapper_file_add_form($form, &$form_state, array $options
   $form['url'] = array(
     '#type' => 'textfield',
     '#title' => 'URL',
+    '#description' => t('Allowed values:
+<ul>
+  <li>any absolute URLs, for example "http://example.com/"</li>
+  <li>internal paths starting with "local://" prefix, for example "local://node/123" or "local://node/123?foo=bar&baz=qux"
+</ul>'),
     '#attributes' => array('class' => array('media-add-from-remote-url')),
     '#maxlength' => 255, // Maximum length of {file_managed}.uri
     '#element_validate' => array('remote_stream_wrapper_validate_url'),
