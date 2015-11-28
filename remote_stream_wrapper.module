@@ -78,6 +78,14 @@ function remote_stream_wrapper_stream_wrappers() {
   $info['feed'] = $info['http'];
   $info['feed']['name'] = t('Feed URLs');
 
+  $info['local'] = array(
+    'name' => t('Local paths'),
+    'class' => 'DrupalRemoteLocalStreamWrapper',
+    'description' => t('Local paths as remote files.'),
+    'type' => STREAM_WRAPPERS_REMOTE,
+    'remote' => TRUE,
+  );
+
   return $info;
 }
 
@@ -143,21 +151,60 @@ function remote_stream_wrapper_form_field_ui_field_edit_form_alter(&$form, &$for
  * Validation callback for remote URLs.
  */
 function remote_stream_wrapper_validate_url($element, &$form_state) {
-  $value = $element['#value'];
-  if ($value != '' && !valid_url($value, TRUE)) {
-    form_error($element, t('Invalid URL %url.', array('%url' => $value)));
-  }
-  elseif (!file_stream_wrapper_valid_scheme(file_uri_scheme($value))) {
-    // Check that the scheme is supported.
-    form_error($element, t('Remote URLs with the %scheme scheme are not supported.', array('%scheme' => file_uri_scheme($value))));
-  }
-  else {
-    // Check that the file exists.
-    $request = drupal_http_request($value, array('method' => 'HEAD'));
-    if (!empty($request->error)) {
-      form_error($element, t('Unable to fetch file from URL %url (error @code: %error).', array('%url' => $value, '@code' => $request->code, '%error' => $request->error)));
+  foreach (array('scheme', 'valid', 'exists') as $check) {
+    $message = _remote_stream_wrapper_check_uri($check, $element['#value']);
+    if ($message !== NULL) {
+      form_error($element, $message);
+      return;
     }
   }
+}
+
+/**
+ * Checks URI.
+ *
+ * @param string $check
+ *   Check type, either 'scheme', 'valid', or 'exists'.
+ * @param string $uri
+ *
+ * @return null|string
+ *   NULL if check passed, or error message.
+ */
+function _remote_stream_wrapper_check_uri($check, $uri) {
+  if ($wrapper = file_stream_wrapper_get_instance_by_uri($uri)) {
+    switch ($check) {
+      case 'scheme':
+        if (file_stream_wrapper_valid_scheme(file_uri_scheme($uri))) {
+          return NULL;
+        }
+        return t('Remote URLs with the %scheme scheme are not supported.', array('%scheme' => file_uri_scheme($uri)));
+
+      case 'valid':
+        if ($wrapper instanceof DrupalRemoteStreamWrapper) {
+          if (valid_url($uri, TRUE)) {
+            return NULL;
+          }
+        }
+        elseif ($wrapper instanceof DrupalRemoteLocalStreamWrapper) {
+          $options = drupal_parse_url(substr($uri, 8));
+          if (trim($options['path']) !== '') {
+            return NULL;
+          }
+        }
+        return t('Invalid URL %url.', array('%url' => $uri));
+
+      case 'exists':
+        if ($wrapper instanceof DrupalRemoteLocalStreamWrapper) {
+          $uri = DrupalRemoteLocalStreamWrapper::localToRemote($uri);
+        }
+        $request = drupal_http_request($uri, array('method' => 'HEAD'));
+        if (empty($request->error)) {
+          return NULL;
+        }
+        return t('Unable to fetch file from URL %url (error @code: %error).', array('%url' => $uri, '@code' => $request->code, '%error' => $request->error));
+    }
+  }
+  return t('Invalid URL %url.', array('%url' => $uri));
 }
 
 /**
@@ -189,6 +236,12 @@ function remote_stream_wrapper_file_create_by_uri($uri) {
   $file->uri = $uri;
   $file->filename = basename($file->uri);
   $file->filemime = file_get_mimetype($file->uri);
+
+  // If URL targeting a HTML page, the mime can have charset inside, for
+  // example, it can be "text/html; charset=utf-8".
+  $mime_parts = explode(';', trim($file->filemime));
+  $file->filemime = $mime_parts[0];
+
   $file->uid = $GLOBALS['user']->uid;
   $file->status = FILE_STATUS_PERMANENT;
   return $file;
@@ -329,13 +382,6 @@ function remote_stream_wrapper_file_add_form_validate(&$form, &$form_state) {
   } catch (Exception $e) {
     form_error($form['url'], $e->getMessage());
     return;
-  }
-  if (isset($form_state['values']['mime']) && empty($form_state['rebuild']) && !form_get_errors()) {
-    include_once DRUPAL_ROOT . '/includes/file.mimetypes.inc';
-    $mimetypes = file_mimetype_mapping();
-    if (!in_array($form_state['values']['mime'], $mimetypes['mimetypes'])) {
-      form_error($form['mime'], t('File mime is not correct.'));
-    }
   }
 }
 
