@@ -407,6 +407,13 @@ function remote_stream_wrapper_file_add_form_submit($form, &$form_state) {
     $file->type = $form_state['values']['type'];
     $file->filemime = $form_state['values']['mime'];
 
+    // Try to set the filename_field field (from the title module).
+    try {
+      $entity_wrapper = entity_metadata_wrapper('file', $file);
+      $entity_wrapper->filename_field->set($file->filename);
+    }
+    catch (Exception $e) { }
+
     file_save($file);
   }
   catch (Exception $e) {
