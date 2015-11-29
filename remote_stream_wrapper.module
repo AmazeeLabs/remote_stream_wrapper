@@ -236,12 +236,6 @@ function remote_stream_wrapper_file_create_by_uri($uri) {
   $file->uri = $uri;
   $file->filename = basename($file->uri);
   $file->filemime = file_get_mimetype($file->uri);
-
-  // If URL targeting a HTML page, the mime can have charset inside, for
-  // example, it can be "text/html; charset=utf-8".
-  $mime_parts = explode(';', trim($file->filemime));
-  $file->filemime = $mime_parts[0];
-
   $file->uid = $GLOBALS['user']->uid;
   $file->status = FILE_STATUS_PERMANENT;
   return $file;

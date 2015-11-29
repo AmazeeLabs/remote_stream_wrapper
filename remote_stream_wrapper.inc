@@ -91,7 +91,12 @@ class DrupalRemoteStreamWrapper implements DrupalStreamWrapperInterface {
     // Fallback to the 'Content-Type' header.
     $request = drupal_http_request($uri, array('method' => 'HEAD'));
     if (empty($request->error) && !empty($request->headers['content-type'])) {
-      return $request->headers['content-type'];
+      $mime = $request->headers['content-type'];
+      // If URL targeting an HTML page, the mime can have charset inside, for
+      // example, it can be "text/html; charset=utf-8".
+      $mime_parts = explode(';', trim($mime));
+      $mime = $mime_parts[0];
+      return $mime;
     }
 
     return 'application/octet-stream';
