@@ -304,24 +304,6 @@ function remote_stream_wrapper_file_add_form($form, &$form_state, array $options
   $form['#validators'] = array();
 
   if (isset($form_state['previous_url']) && $form_state['previous_url'] == $form_state['values']['url']) {
-    $form['mime'] = array(
-      '#type' => 'textfield',
-      '#title' => t('Mime'),
-      '#required' => TRUE,
-      '#default_value' => $form_state['values']['mime'],
-    );
-    include_once DRUPAL_ROOT . '/includes/file.mimetypes.inc';
-    $mimetypes = file_mimetype_mapping();
-    $form['mimetype_mapping'] = array(
-      '#type' => 'fieldset',
-      '#title' => t('Mimetype List'),
-      '#collapsible' => TRUE,
-      '#collapsed' => TRUE,
-    );
-    $form['mimetype_mapping']['mapping'] = array(
-      '#theme' => 'item_list',
-      '#items' => $mimetypes['mimetypes'],
-    );
     $form['type'] = array(
       '#type' => 'select',
       '#title' => t('Type'),
@@ -353,21 +335,12 @@ function remote_stream_wrapper_file_add_form_validate(&$form, &$form_state) {
       form_error($form['url'], t('A file with given URL is already exist. You can edit it at !link', array('!link' => l($edit_path, $edit_path))));
     }
     else {
-      include_once DRUPAL_ROOT . '/includes/file.mimetypes.inc';
-      $mimetypes = file_mimetype_mapping();
       $first_url_validation = empty($form_state['previous_url']) || $form_state['previous_url'] != $form_state['values']['url'];
       if ($first_url_validation) {
         $form_state['previous_url'] = $form_state['values']['url'];
         $form_state['rebuild'] = TRUE;
         // Try to detect file type automatically.
         $file = remote_stream_wrapper_file_create_by_uri($form_state['values']['url']);
-        $form_state['values']['mime'] = $file->filemime;
-        if (in_array($form_state['values']['mime'], $mimetypes['mimetypes'])) {
-          drupal_set_message(t('Please ensure that file mime is correct.'));
-        }
-        else {
-          drupal_set_message(t('Auto-detected file mime is not correct. Please change it.'), 'warning');
-        }
         if ($file_type = file_get_type($file)) {
           $form_state['values']['type'] = $file_type;
           drupal_set_message(t('Please ensure that file type is correct.'));
@@ -397,9 +370,8 @@ function remote_stream_wrapper_file_add_form_submit($form, &$form_state) {
   try {
     $file = remote_stream_wrapper_file_create_by_uri($uri);
 
-    // Use form values for type and mime.
+    // Use form value for file type.
     $file->type = $form_state['values']['type'];
-    $file->filemime = $form_state['values']['mime'];
 
     // Try to set the filename_field field (from the title module).
     try {
